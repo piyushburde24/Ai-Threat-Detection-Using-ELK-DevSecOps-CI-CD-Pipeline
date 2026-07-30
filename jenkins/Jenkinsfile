@@ -16,6 +16,18 @@ pipeline {
     stages {
 
 
+        stage('Checkout Source Code') {
+
+            steps {
+
+                checkout scm
+
+            }
+
+        }
+
+
+
 
         stage('Setup Python Environment') {
 
@@ -46,6 +58,7 @@ pipeline {
             }
 
         }
+
 
 
 
@@ -94,6 +107,7 @@ pipeline {
 
                     sh '''
 
+
                     echo "Running SonarQube Scan"
 
 
@@ -123,7 +137,6 @@ pipeline {
 
 
 
-
         stage('SonarQube Quality Gate') {
 
 
@@ -136,7 +149,9 @@ pipeline {
                     echo "Checking SonarQube Quality Gate"
 
 
+
                     waitForQualityGate abortPipeline:true
+
 
 
                 }
@@ -146,7 +161,6 @@ pipeline {
 
 
         }
-
 
 
 
@@ -218,10 +232,6 @@ pipeline {
 
 
 
-                echo "Review report from Jenkins artifacts"
-
-
-
                 '''
 
 
@@ -229,7 +239,6 @@ pipeline {
 
 
         }
-
 
 
 
@@ -289,17 +298,23 @@ pipeline {
 
 
 
+
                 docker run -d \
                 --name flask-app \
                 --restart unless-stopped \
                 --network ${DOCKER_NETWORK} \
                 -p 5000:5000 \
+                --health-cmd="curl -f http://localhost:5000/health || exit 1" \
+                --health-interval=30s \
+                --health-timeout=10s \
+                --health-retries=3 \
                 ${IMAGE_NAME}:${IMAGE_TAG}
 
 
 
-                '''
 
+
+                '''
 
             }
 
@@ -331,11 +346,38 @@ pipeline {
 
 
 
-                curl --fail http://localhost:5000/health
+
+                if docker exec flask-app curl -f http://localhost:5000/health
+
+                then
+
+
+                    echo "Application is healthy and running"
 
 
 
-                echo "Application is running"
+                else
+
+
+
+                    echo "Application failed health check"
+
+
+
+                    docker logs flask-app
+
+
+
+                    exit 1
+
+
+
+                fi
+
+
+
+
+                echo "Deployment verification completed"
 
 
 
@@ -358,18 +400,24 @@ pipeline {
 
 
 
+
     post {
 
 
+
         always {
+
 
 
             echo "Collecting reports"
 
 
 
+
             junit allowEmptyResults:true,
+
             testResults:'app/test-results.xml'
+
 
 
 
@@ -386,7 +434,10 @@ pipeline {
             )
 
 
+
         }
+
+
 
 
 
@@ -395,19 +446,25 @@ pipeline {
         success {
 
 
+
             echo "================================"
+
 
 
             echo "Pipeline completed successfully"
 
 
-            echo "Application deployed on port 5000"
+
+            echo "Flask application deployed on port 5000"
+
 
 
             echo "================================"
 
 
+
         }
+
 
 
 
@@ -417,13 +474,17 @@ pipeline {
         failure {
 
 
+
             echo "Pipeline failed. Check Jenkins logs."
+
 
 
         }
 
 
+
     }
+
 
 
 }
