@@ -304,13 +304,16 @@ pipeline {
                 --restart unless-stopped \
                 --network ${DOCKER_NETWORK} \
                 -p 5000:5000 \
-                --health-cmd="curl -f http://localhost:5000/health || exit 1" \
-                --health-interval=30s \
-                --health-timeout=10s \
-                --health-retries=3 \
                 ${IMAGE_NAME}:${IMAGE_TAG}
 
 
+
+
+                echo "Container started"
+
+
+
+                docker ps | grep flask-app
 
 
 
@@ -338,46 +341,58 @@ pipeline {
                 sh '''
 
 
-                echo "Checking application health"
+                echo "Checking Flask application health"
 
 
 
-                sleep 10
+                for i in {1..12}
+
+                do
+
+
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health || true)
+
+
+
+                    if [ "$STATUS" = "200" ]
+
+                    then
+
+
+                        echo "Application is healthy and running"
+
+
+
+                        exit 0
+
+
+
+                    fi
+
+
+
+                    echo "Waiting for Flask application startup..."
+
+
+
+                    sleep 5
+
+
+
+                done
 
 
 
 
-                if docker exec flask-app curl -f http://localhost:5000/health
-
-                then
-
-
-                    echo "Application is healthy and running"
+                echo "Application failed health check"
 
 
 
-                else
+                docker logs flask-app
 
 
 
-                    echo "Application failed health check"
-
-
-
-                    docker logs flask-app
-
-
-
-                    exit 1
-
-
-
-                fi
-
-
-
-
-                echo "Deployment verification completed"
+                exit 1
 
 
 
