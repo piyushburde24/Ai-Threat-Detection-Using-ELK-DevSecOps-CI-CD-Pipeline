@@ -8,10 +8,8 @@ pipeline {
         IMAGE_NAME = "ai-threat-detection"
         IMAGE_TAG = "latest"
         DOCKER_NETWORK = "devsecops-net"
-        CONTAINER_NAME = "flask-app"
 
     }
-
 
 
     stages {
@@ -29,7 +27,6 @@ pipeline {
 
 
 
-
         stage('Setup Python Environment') {
 
             steps {
@@ -38,29 +35,21 @@ pipeline {
 
                 echo "Creating Python virtual environment"
 
-
                 cd app
-
 
                 python3 -m venv venv
 
-
                 . venv/bin/activate
-
 
                 pip install --upgrade pip
 
-
                 pip install -r requirements.txt
-
 
                 '''
 
             }
 
         }
-
-
 
 
 
@@ -72,17 +61,13 @@ pipeline {
 
                 echo "Running Flask tests"
 
-
                 cd app
 
-
                 . venv/bin/activate
-
 
                 pytest tests \
                 --junitxml=test-results.xml \
                 --verbose
-
 
                 '''
 
@@ -93,22 +78,15 @@ pipeline {
 
 
 
-
-
         stage('SonarQube Analysis') {
-
 
             steps {
 
-
                 withSonarQubeEnv('SonarQube') {
-
 
                     sh '''
 
-
                     echo "Running SonarQube Scan"
-
 
 
                     sonar-scanner \
@@ -118,67 +96,41 @@ pipeline {
                     -Dsonar.python.version=3.13
 
 
-
                     '''
-
 
                 }
 
-
             }
 
-
         }
-
-
-
 
 
 
 
         stage('SonarQube Quality Gate') {
 
-
             steps {
-
 
                 timeout(time:5, unit:'MINUTES') {
 
-
-                    echo "Checking SonarQube Quality Gate"
-
-
-
                     waitForQualityGate abortPipeline:true
-
-
 
                 }
 
-
             }
-
 
         }
 
 
 
 
-
-
-
-
         stage('Build Docker Image') {
-
 
             steps {
 
-
                 sh '''
 
-
                 echo "Building Docker image"
-
 
 
                 docker build \
@@ -186,41 +138,25 @@ pipeline {
                 app
 
 
-
-                docker images | grep ${IMAGE_NAME}
-
-
-
                 '''
 
-
             }
-
 
         }
 
 
 
 
-
-
-
-
         stage('Trivy Security Scan') {
-
 
             steps {
 
-
                 sh '''
-
 
                 echo "Running Trivy security scan"
 
 
-
                 mkdir -p trivy/reports
-
 
 
                 trivy image \
@@ -230,124 +166,74 @@ pipeline {
                 ${IMAGE_NAME}:${IMAGE_TAG}
 
 
-
-                echo "Trivy scan completed"
-
-
-
                 '''
-
 
             }
 
-
         }
-
-
-
-
 
 
 
 
         stage('Create Docker Network') {
 
-
             steps {
-
 
                 sh '''
 
-
-                echo "Creating Docker network"
-
-
-
                 docker network create ${DOCKER_NETWORK} || true
-
-
 
                 '''
 
-
             }
 
-
         }
-
-
-
-
-
 
 
 
 
         stage('Deploy Flask Container') {
 
-
             steps {
 
-
                 sh '''
-
 
                 echo "Deploying Flask application"
 
 
-
-                docker rm -f ${CONTAINER_NAME} || true
-
+                docker rm -f flask-app || true
 
 
                 docker run -d \
-                --name ${CONTAINER_NAME} \
+                --name flask-app \
                 --restart unless-stopped \
                 --network ${DOCKER_NETWORK} \
                 -p 5000:5000 \
                 ${IMAGE_NAME}:${IMAGE_TAG}
 
 
-
-                echo "Container started"
-
-
-
                 sleep 5
 
 
-
-                docker ps | grep ${CONTAINER_NAME}
-
+                docker ps | grep flask-app
 
 
                 '''
 
-
             }
-
 
         }
 
 
 
 
-
-
-
-
-
         stage('Verify Application') {
-
 
             steps {
 
-
                 sh '''
 
-
-                echo "Checking Flask application health"
-
+                echo "Checking Flask health endpoint"
 
 
                 for i in {1..12}
@@ -355,10 +241,7 @@ pipeline {
                 do
 
 
-
-                    STATUS=$(curl -s \
-                    -o /dev/null \
-                    -w "%{http_code}" \
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
                     http://localhost:5000/health || true)
 
 
@@ -367,75 +250,36 @@ pipeline {
 
                     then
 
-
                         echo "================================"
-
-
-
-                        echo "Application is healthy"
-
-
-
-                        echo "HTTP STATUS: $STATUS"
-
-
-
+                        echo "Application Healthy"
                         echo "================================"
-
-
 
                         exit 0
-
-
 
                     fi
 
 
-
-
-                    echo "Waiting for application startup..."
-
-
+                    echo "Waiting for application..."
 
                     sleep 5
-
 
 
                 done
 
 
 
+                echo "Application failed"
 
 
-                echo "Application failed health check"
-
-
-
-                echo "Docker container status:"
-
-
-
-                docker ps -a | grep ${CONTAINER_NAME}
-
-
-
-                echo "Docker logs:"
-
-
-
-                docker logs ${CONTAINER_NAME}
-
+                docker logs flask-app
 
 
                 exit 1
 
 
-
                 '''
 
-
             }
-
 
         }
 
@@ -446,35 +290,17 @@ pipeline {
 
 
 
-
-
-
-
-
     post {
-
 
 
         always {
 
 
-
             echo "Collecting reports"
 
 
-
-
-            junit(
-
-                allowEmptyResults:true,
-
-                testResults:'app/test-results.xml'
-
-            )
-
-
-
-
+            junit allowEmptyResults:true,
+            testResults:'app/test-results.xml'
 
 
 
@@ -489,69 +315,51 @@ pipeline {
             )
 
 
-
         }
-
-
-
-
 
 
 
         success {
 
 
+            echo """
 
-            echo "================================"
+            ================================
 
+            PIPELINE SUCCESS
 
+            Flask Application Running
 
-            echo "PIPELINE COMPLETED SUCCESSFULLY"
+            URL:
+            http://localhost:5000
 
+            ================================
 
-
-            echo "FLASK APPLICATION RUNNING ON PORT 5000"
-
-
-
-            echo "================================"
-
-
+            """
 
         }
-
-
-
-
 
 
 
         failure {
 
 
+            echo """
 
-            echo "================================"
+            ================================
 
+            PIPELINE FAILED
 
+            Check Jenkins logs
 
-            echo "PIPELINE FAILED"
+            ================================
 
-
-
-            echo "CHECK JENKINS CONSOLE LOGS"
-
-
-
-            echo "================================"
-
-
+            """
 
         }
 
 
-
     }
-
 
 
 }
