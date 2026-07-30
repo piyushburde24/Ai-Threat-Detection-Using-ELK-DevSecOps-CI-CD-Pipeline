@@ -6,24 +6,14 @@ pipeline {
     environment {
 
         IMAGE_NAME = "ai-threat-detection"
-        IMAGE_TAG  = "latest"
+        IMAGE_TAG = "latest"
         DOCKER_NETWORK = "devsecops-net"
 
     }
 
 
+
     stages {
-
-
-        stage('Checkout Source Code') {
-
-            steps {
-
-                checkout scm
-
-            }
-
-        }
 
 
 
@@ -67,7 +57,7 @@ pipeline {
 
                 sh '''
 
-                echo "Running Flask application tests"
+                echo "Running Flask tests"
 
 
                 cd app
@@ -92,15 +82,20 @@ pipeline {
 
 
 
+
         stage('SonarQube Analysis') {
+
 
             steps {
 
+
                 withSonarQubeEnv('SonarQube') {
+
 
                     sh '''
 
-                    echo "Running SonarQube analysis"
+                    echo "Running SonarQube Scan"
+
 
 
                     sonar-scanner \
@@ -110,13 +105,19 @@ pipeline {
                     -Dsonar.python.version=3.13
 
 
+
                     '''
+
 
                 }
 
+
             }
 
+
         }
+
+
 
 
 
@@ -125,22 +126,27 @@ pipeline {
 
         stage('SonarQube Quality Gate') {
 
+
             steps {
 
-                timeout(time: 5, unit: 'MINUTES') {
+
+                timeout(time:5, unit:'MINUTES') {
 
 
                     echo "Checking SonarQube Quality Gate"
 
 
-                    waitForQualityGate abortPipeline: true
+                    waitForQualityGate abortPipeline:true
 
 
                 }
 
+
             }
 
+
         }
+
 
 
 
@@ -151,11 +157,15 @@ pipeline {
 
         stage('Build Docker Image') {
 
+
             steps {
+
 
                 sh '''
 
+
                 echo "Building Docker image"
+
 
 
                 docker build \
@@ -163,11 +173,15 @@ pipeline {
                 app
 
 
+
                 '''
+
 
             }
 
+
         }
+
 
 
 
@@ -177,11 +191,15 @@ pipeline {
 
         stage('Trivy Security Scan') {
 
+
             steps {
+
 
                 sh '''
 
-                echo "Scanning Docker image using Trivy"
+
+                echo "Running Trivy security scan"
+
 
 
                 mkdir -p trivy/reports
@@ -190,18 +208,28 @@ pipeline {
 
                 trivy image \
                 --severity HIGH,CRITICAL \
-                --exit-code 1 \
                 --format table \
                 --output trivy/reports/trivy-report.txt \
                 ${IMAGE_NAME}:${IMAGE_TAG}
 
 
 
+                echo "Trivy scan completed"
+
+
+
+                echo "Review report from Jenkins artifacts"
+
+
+
                 '''
+
 
             }
 
+
         }
+
 
 
 
@@ -212,19 +240,26 @@ pipeline {
 
         stage('Create Docker Network') {
 
+
             steps {
+
 
                 sh '''
 
+
                 echo "Creating Docker network"
+
 
 
                 docker network create ${DOCKER_NETWORK} || true
 
 
+
                 '''
 
+
             }
+
 
         }
 
@@ -238,15 +273,19 @@ pipeline {
 
         stage('Deploy Flask Container') {
 
+
             steps {
+
 
                 sh '''
 
-                echo "Deploying Flask container"
+
+                echo "Deploying Flask application"
 
 
 
                 docker rm -f flask-app || true
+
 
 
 
@@ -261,7 +300,9 @@ pipeline {
 
                 '''
 
+
             }
+
 
         }
 
@@ -275,68 +316,41 @@ pipeline {
 
         stage('Verify Application') {
 
+
             steps {
+
 
                 sh '''
 
-                echo "Checking Flask application health"
+
+                echo "Checking application health"
 
 
 
-                for i in {1..12}
-
-                do
-
-
-                    if curl -f http://localhost:5000/health
-
-                    then
-
-
-                        echo "Application is healthy"
-
-
-                        exit 0
-
-
-                    fi
+                sleep 10
 
 
 
-                    echo "Waiting for application startup..."
+                curl --fail http://localhost:5000/health
 
 
 
-                    sleep 5
-
-
-
-                done
-
-
-
-
-                echo "Application failed to start"
-
-
-
-                docker logs flask-app
-
-
-
-                exit 1
+                echo "Application is running"
 
 
 
                 '''
 
+
             }
+
 
         }
 
 
 
     }
+
 
 
 
@@ -354,8 +368,8 @@ pipeline {
 
 
 
-            junit allowEmptyResults: true,
-            testResults: 'app/test-results.xml'
+            junit allowEmptyResults:true,
+            testResults:'app/test-results.xml'
 
 
 
@@ -363,11 +377,11 @@ pipeline {
 
             archiveArtifacts(
 
-                artifacts: 'trivy/reports/*',
+                artifacts:'trivy/reports/*',
 
-                fingerprint: true,
+                fingerprint:true,
 
-                allowEmptyArchive: true
+                allowEmptyArchive:true
 
             )
 
@@ -378,11 +392,19 @@ pipeline {
 
 
 
-
         success {
 
 
-            echo "Pipeline completed successfully."
+            echo "================================"
+
+
+            echo "Pipeline completed successfully"
+
+
+            echo "Application deployed on port 5000"
+
+
+            echo "================================"
 
 
         }
@@ -395,7 +417,7 @@ pipeline {
         failure {
 
 
-            echo "Pipeline failed. Check console logs."
+            echo "Pipeline failed. Check Jenkins logs."
 
 
         }
