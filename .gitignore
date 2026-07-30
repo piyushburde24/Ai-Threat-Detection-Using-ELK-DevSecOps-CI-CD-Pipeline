@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.env
+
+# Pytest
+.pytest_cache/
+
+# Docker
+*.log
+
+# SonarQube
+.scannerwork/
+
+# Trivy Reports
+trivy/reports/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

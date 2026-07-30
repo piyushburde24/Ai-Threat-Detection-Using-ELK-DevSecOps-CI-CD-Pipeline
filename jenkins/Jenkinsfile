@@ -1,0 +1,89 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "ai-threat-detection"
+        IMAGE_TAG = "latest"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Python Environment') {
+            steps {
+                sh '''
+                cd app
+                python3 -m venv venv
+                . venv/bin/activate
+                pip install --upgrade pip
+                pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Run Unit Tests') {
+            steps {
+                sh '''
+                cd app
+                . venv/bin/activate
+                pytest
+                '''
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                    sonar-scanner \
+                    -Dsonar.projectKey=ai-threat-detection \
+                    -Dsonar.sources=app
+                    '''
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                docker build -t ${IMAGE_NAME}:${IMAGE_TAG} app
+                '''
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                sh '''
+                mkdir -p trivy/reports
+
+                trivy image \
+                    --severity HIGH,CRITICAL \
+                    --format table \
+                    --output trivy/reports/trivy-report.txt \
+                    ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+    }
+
+    post {
+
+        success {
+            echo 'Pipeline completed successfully.'
+        }
+
+        failure {
+            echo 'Pipeline failed.'
+        }
+
+        always {
+            archiveArtifacts artifacts: 'trivy/reports/*', fingerprint: true, allowEmptyArchive: true
+        }
+    }
+}
