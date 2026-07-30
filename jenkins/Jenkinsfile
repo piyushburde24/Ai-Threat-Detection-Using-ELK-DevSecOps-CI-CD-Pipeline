@@ -35,21 +35,28 @@ pipeline {
 
                 echo "Creating Python virtual environment"
 
+
                 cd app
+
 
                 python3 -m venv venv
 
+
                 . venv/bin/activate
+
 
                 pip install --upgrade pip
 
+
                 pip install -r requirements.txt
+
 
                 '''
 
             }
 
         }
+
 
 
 
@@ -62,19 +69,24 @@ pipeline {
 
                 echo "Running Flask application tests"
 
+
                 cd app
 
+
                 . venv/bin/activate
+
 
                 pytest tests \
                 --junitxml=test-results.xml \
                 --verbose
+
 
                 '''
 
             }
 
         }
+
 
 
 
@@ -110,6 +122,33 @@ pipeline {
 
 
 
+
+        stage('SonarQube Quality Gate') {
+
+            steps {
+
+                timeout(time: 5, unit: 'MINUTES') {
+
+
+                    echo "Checking SonarQube Quality Gate"
+
+
+                    waitForQualityGate abortPipeline: true
+
+
+                }
+
+            }
+
+        }
+
+
+
+
+
+
+
+
         stage('Build Docker Image') {
 
             steps {
@@ -135,6 +174,7 @@ pipeline {
 
 
 
+
         stage('Trivy Security Scan') {
 
             steps {
@@ -147,11 +187,14 @@ pipeline {
                 mkdir -p trivy/reports
 
 
+
                 trivy image \
                 --severity HIGH,CRITICAL \
+                --exit-code 1 \
                 --format table \
                 --output trivy/reports/trivy-report.txt \
                 ${IMAGE_NAME}:${IMAGE_TAG}
+
 
 
                 '''
@@ -159,6 +202,7 @@ pipeline {
             }
 
         }
+
 
 
 
@@ -190,6 +234,8 @@ pipeline {
 
 
 
+
+
         stage('Deploy Flask Container') {
 
             steps {
@@ -199,7 +245,9 @@ pipeline {
                 echo "Deploying Flask container"
 
 
+
                 docker rm -f flask-app || true
+
 
 
                 docker run -d \
@@ -210,11 +258,14 @@ pipeline {
                 ${IMAGE_NAME}:${IMAGE_TAG}
 
 
+
                 '''
 
             }
 
         }
+
+
 
 
 
@@ -231,34 +282,50 @@ pipeline {
                 echo "Checking Flask application health"
 
 
+
                 for i in {1..12}
+
                 do
 
-                    if curl -f http://flask-app:5000/health
+
+                    if curl -f http://localhost:5000/health
+
                     then
+
 
                         echo "Application is healthy"
 
+
                         exit 0
+
 
                     fi
 
 
+
                     echo "Waiting for application startup..."
+
+
 
                     sleep 5
 
+
+
                 done
+
 
 
 
                 echo "Application failed to start"
 
 
+
                 docker logs flask-app
 
 
+
                 exit 1
+
 
 
                 '''
@@ -266,6 +333,7 @@ pipeline {
             }
 
         }
+
 
 
     }
@@ -291,6 +359,8 @@ pipeline {
 
 
 
+
+
             archiveArtifacts(
 
                 artifacts: 'trivy/reports/*',
@@ -307,18 +377,26 @@ pipeline {
 
 
 
+
+
         success {
 
+
             echo "Pipeline completed successfully."
+
 
         }
 
 
 
 
+
+
         failure {
 
+
             echo "Pipeline failed. Check console logs."
+
 
         }
 
