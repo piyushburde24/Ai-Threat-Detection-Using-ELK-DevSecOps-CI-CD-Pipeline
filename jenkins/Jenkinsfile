@@ -2,22 +2,38 @@ pipeline {
 
     agent any
 
+
     environment {
+
         IMAGE_NAME = "ai-threat-detection"
+
         IMAGE_TAG = "latest"
+
     }
+
 
     stages {
 
+
         stage('Checkout Source Code') {
+
             steps {
+
                 checkout scm
+
             }
+
         }
 
+
+
         stage('Setup Python Environment') {
+
             steps {
+
                 sh '''
+                echo "Creating Python virtual environment"
+
                 cd app
 
                 python3 -m venv venv
@@ -27,107 +43,228 @@ pipeline {
                 pip install --upgrade pip
 
                 pip install -r requirements.txt
+
                 '''
+
             }
+
         }
 
+
+
         stage('Run Unit Tests') {
+
             steps {
+
                 sh '''
+
+                echo "Running Flask application tests"
+
                 cd app
 
                 . venv/bin/activate
 
-                pytest tests --junitxml=test-results.xml
+                pytest tests \
+                --junitxml=test-results.xml \
+                --verbose
+
                 '''
+
             }
+
         }
+
+
+
 
         stage('SonarQube Analysis') {
+
             steps {
+
                 withSonarQubeEnv('SonarQube') {
+
                     sh '''
+
+                    echo "Running SonarQube analysis"
+
+
                     sonar-scanner \
-                      -Dsonar.projectKey=ai-threat-detection \
-                      -Dsonar.sources=app
+                    -Dsonar.projectKey=ai-threat-detection \
+                    -Dsonar.projectName=ai-threat-detection \
+                    -Dsonar.sources=app
+
+
                     '''
+
                 }
+
             }
+
         }
+
+
+
+
 
         stage('Build Docker Image') {
+
             steps {
+
                 sh '''
+
+                echo "Building Docker image"
+
+
                 docker build \
-                    -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                    app
+                -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                app
+
+
                 '''
+
             }
+
         }
+
+
+
+
 
         stage('Trivy Security Scan') {
+
             steps {
+
                 sh '''
+
+                echo "Scanning Docker image using Trivy"
+
+
                 mkdir -p trivy/reports
 
+
                 trivy image \
-                    --severity HIGH,CRITICAL \
-                    --format table \
-                    --output trivy/reports/trivy-report.txt \
-                    ${IMAGE_NAME}:${IMAGE_TAG}
+                --severity HIGH,CRITICAL \
+                --format table \
+                --output trivy/reports/trivy-report.txt \
+                ${IMAGE_NAME}:${IMAGE_TAG}
+
+
                 '''
+
             }
+
         }
+
+
+
+
+
+
 
         stage('Deploy Flask Container') {
+
             steps {
+
                 sh '''
+
+                echo "Deploying Flask container"
+
+
                 docker rm -f flask-app || true
 
+
                 docker run -d \
-                    --name flask-app \
-                    -p 5000:5000 \
-                    ${IMAGE_NAME}:${IMAGE_TAG}
+                --name flask-app \
+                --restart unless-stopped \
+                -p 5000:5000 \
+                ${IMAGE_NAME}:${IMAGE_TAG}
+
+
                 '''
+
             }
+
         }
+
+
+
+
+
+
 
         stage('Verify Application') {
+
             steps {
+
                 sh '''
+
+                echo "Checking application health"
+
+
                 sleep 10
 
-                curl http://localhost:5000
+
+                curl --fail http://localhost:5000
+
+
                 '''
+
             }
+
         }
 
-        /*
-        The OWASP ZAP stage will be added after
-        we configure the ZAP container.
-        */
 
     }
+
+
+
 
     post {
 
+
         always {
 
-            junit allowEmptyResults: true,
-                  testResults: 'app/test-results.xml'
 
-            archiveArtifacts artifacts: 'trivy/reports/*',
-                             fingerprint: true,
-                             allowEmptyArchive: true
+            echo "Collecting reports"
+
+
+            junit allowEmptyResults: true,
+            testResults: 'app/test-results.xml'
+
+
+            archiveArtifacts(
+
+                artifacts: 'trivy/reports/*',
+
+                fingerprint: true,
+
+                allowEmptyArchive: true
+
+            )
+
+
         }
+
+
 
         success {
+
+
             echo "Pipeline completed successfully."
+
         }
 
+
+
         failure {
-            echo "Pipeline failed."
+
+
+            echo "Pipeline failed. Check console logs."
+
         }
+
+
     }
+
 
 }
