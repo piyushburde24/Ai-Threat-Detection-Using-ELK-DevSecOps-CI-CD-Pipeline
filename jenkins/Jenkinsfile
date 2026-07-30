@@ -6,8 +6,8 @@ pipeline {
     environment {
 
         IMAGE_NAME = "ai-threat-detection"
-
-        IMAGE_TAG = "latest"
+        IMAGE_TAG  = "latest"
+        DOCKER_NETWORK = "devsecops-net"
 
     }
 
@@ -32,6 +32,7 @@ pipeline {
             steps {
 
                 sh '''
+
                 echo "Creating Python virtual environment"
 
                 cd app
@@ -49,6 +50,7 @@ pipeline {
             }
 
         }
+
 
 
 
@@ -77,6 +79,7 @@ pipeline {
 
 
 
+
         stage('SonarQube Analysis') {
 
             steps {
@@ -91,7 +94,8 @@ pipeline {
                     sonar-scanner \
                     -Dsonar.projectKey=ai-threat-detection \
                     -Dsonar.projectName=ai-threat-detection \
-                    -Dsonar.sources=app
+                    -Dsonar.sources=app \
+                    -Dsonar.python.version=3.13
 
 
                     '''
@@ -130,6 +134,7 @@ pipeline {
 
 
 
+
         stage('Trivy Security Scan') {
 
             steps {
@@ -161,6 +166,30 @@ pipeline {
 
 
 
+        stage('Create Docker Network') {
+
+            steps {
+
+                sh '''
+
+                echo "Creating Docker network"
+
+
+                docker network create ${DOCKER_NETWORK} || true
+
+
+                '''
+
+            }
+
+        }
+
+
+
+
+
+
+
         stage('Deploy Flask Container') {
 
             steps {
@@ -176,6 +205,7 @@ pipeline {
                 docker run -d \
                 --name flask-app \
                 --restart unless-stopped \
+                --network ${DOCKER_NETWORK} \
                 -p 5000:5000 \
                 ${IMAGE_NAME}:${IMAGE_TAG}
 
@@ -198,13 +228,37 @@ pipeline {
 
                 sh '''
 
-                echo "Checking application health"
+                echo "Checking Flask application health"
 
 
-                sleep 10
+                for i in {1..12}
+                do
+
+                    if curl -f http://flask-app:5000/health
+                    then
+
+                        echo "Application is healthy"
+
+                        exit 0
+
+                    fi
 
 
-                curl --fail http://localhost:5000
+                    echo "Waiting for application startup..."
+
+                    sleep 5
+
+                done
+
+
+
+                echo "Application failed to start"
+
+
+                docker logs flask-app
+
+
+                exit 1
 
 
                 '''
@@ -219,6 +273,9 @@ pipeline {
 
 
 
+
+
+
     post {
 
 
@@ -228,8 +285,10 @@ pipeline {
             echo "Collecting reports"
 
 
+
             junit allowEmptyResults: true,
             testResults: 'app/test-results.xml'
+
 
 
             archiveArtifacts(
@@ -247,8 +306,8 @@ pipeline {
 
 
 
-        success {
 
+        success {
 
             echo "Pipeline completed successfully."
 
@@ -256,8 +315,8 @@ pipeline {
 
 
 
-        failure {
 
+        failure {
 
             echo "Pipeline failed. Check console logs."
 
