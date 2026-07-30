@@ -8,6 +8,7 @@ pipeline {
         IMAGE_NAME = "ai-threat-detection"
         IMAGE_TAG = "latest"
         DOCKER_NETWORK = "devsecops-net"
+        CONTAINER_NAME = "flask-app"
 
     }
 
@@ -63,7 +64,6 @@ pipeline {
 
 
 
-
         stage('Run Unit Tests') {
 
             steps {
@@ -89,7 +89,6 @@ pipeline {
             }
 
         }
-
 
 
 
@@ -185,6 +184,10 @@ pipeline {
                 docker build \
                 -t ${IMAGE_NAME}:${IMAGE_TAG} \
                 app
+
+
+
+                docker images | grep ${IMAGE_NAME}
 
 
 
@@ -293,14 +296,12 @@ pipeline {
 
 
 
-                docker rm -f flask-app || true
-
-
+                docker rm -f ${CONTAINER_NAME} || true
 
 
 
                 docker run -d \
-                --name flask-app \
+                --name ${CONTAINER_NAME} \
                 --restart unless-stopped \
                 --network ${DOCKER_NETWORK} \
                 -p 5000:5000 \
@@ -308,16 +309,20 @@ pipeline {
 
 
 
-
                 echo "Container started"
 
 
 
-                docker ps | grep flask-app
+                sleep 5
+
+
+
+                docker ps | grep ${CONTAINER_NAME}
 
 
 
                 '''
+
 
             }
 
@@ -350,7 +355,11 @@ pipeline {
                 do
 
 
-                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health || true)
+
+                    STATUS=$(curl -s \
+                    -o /dev/null \
+                    -w "%{http_code}" \
+                    http://localhost:5000/health || true)
 
 
 
@@ -359,7 +368,19 @@ pipeline {
                     then
 
 
-                        echo "Application is healthy and running"
+                        echo "================================"
+
+
+
+                        echo "Application is healthy"
+
+
+
+                        echo "HTTP STATUS: $STATUS"
+
+
+
+                        echo "================================"
 
 
 
@@ -371,7 +392,8 @@ pipeline {
 
 
 
-                    echo "Waiting for Flask application startup..."
+
+                    echo "Waiting for application startup..."
 
 
 
@@ -384,11 +406,24 @@ pipeline {
 
 
 
+
                 echo "Application failed health check"
 
 
 
-                docker logs flask-app
+                echo "Docker container status:"
+
+
+
+                docker ps -a | grep ${CONTAINER_NAME}
+
+
+
+                echo "Docker logs:"
+
+
+
+                docker logs ${CONTAINER_NAME}
 
 
 
@@ -429,9 +464,14 @@ pipeline {
 
 
 
-            junit allowEmptyResults:true,
+            junit(
 
-            testResults:'app/test-results.xml'
+                allowEmptyResults:true,
+
+                testResults:'app/test-results.xml'
+
+            )
+
 
 
 
@@ -466,11 +506,11 @@ pipeline {
 
 
 
-            echo "Pipeline completed successfully"
+            echo "PIPELINE COMPLETED SUCCESSFULLY"
 
 
 
-            echo "Flask application deployed on port 5000"
+            echo "FLASK APPLICATION RUNNING ON PORT 5000"
 
 
 
@@ -490,7 +530,19 @@ pipeline {
 
 
 
-            echo "Pipeline failed. Check Jenkins logs."
+            echo "================================"
+
+
+
+            echo "PIPELINE FAILED"
+
+
+
+            echo "CHECK JENKINS CONSOLE LOGS"
+
+
+
+            echo "================================"
 
 
 
